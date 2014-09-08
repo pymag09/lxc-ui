@@ -617,7 +617,7 @@ def keyboard_shortcuts(scr_id):
 
         curses.panel.update_panels()
         scr_id.refresh()
-        status = lxc_dialog_panel(winds, list_of_containers[cursor_pos - 1])
+        status = lxc_dialog_panel(winds, None)
         if status:
             return (''.join(winds[0]['cn_line']),
                     winds[1]['items'][int(winds[1]['choice']) - 1])
