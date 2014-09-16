@@ -3,16 +3,149 @@
 __author__ = 'Bieliaievskyi Sergey'
 __credits__ = ["Bieliaievskyi Sergey"]
 __license__ = "Apache License"
-__version__ = "1.0.0"
+__version__ = "1.2.0"
 __maintainer__ = "Bieliaievskyi Sergey"
 __email__ = "magelan09@gmail.com"
-__status__ = "Release"
+__status__ = "Release Candidate"
 
 
 import curses
 import curses.panel
 import os
 import lxc
+import _lxc
+
+
+class BugContainer(lxc.Container):
+    #It helps to work correctly with CIDR ip and allows to disable interface
+    #Issue https://github.com/lxc/lxc/issues/299
+    def __init__(self, name, config_path=None):
+        super(BugContainer, self).__init__(name, config_path)
+        self.my_config = ''
+        self._read_config()
+        self.rootfs_size = self._get_size()
+
+    def _get_size(self):
+        total_size = 0
+        start_path = str(self.config_file_name).replace('config', 'rootfs')
+        for dirpath, dirnames, filenames in os.walk(start_path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                try:
+                    if os.path.islink(fp):
+                        continue
+                    total_size += os.path.getsize(fp)
+                except FileNotFoundError:
+                    pass
+        r = int(int(len(str(total_size))) / 3)
+        total_size = total_size / (1024 ** r)
+        if not int(total_size):
+            total_size = total_size * 1024
+            r = r -1
+        return '%.1f%s' % (float(total_size), ['B', 'K', 'M', 'G', 'T'][r])
+
+    def _mark_interfaces(self):
+        pos = -1
+        for line in self.my_config.split('\n'):
+            if 'network.type' in line:
+                pos += 1
+            if 'network' in line:
+                new = line.split('.')
+                new.insert(2, str(pos))
+                self.my_config = self.my_config.replace(line, '.'.join(new), 1)
+
+    def _clean_up_config(self):
+        c_string = self.my_config
+        for line in c_string.split('\n'):
+            if 'network' in line:
+                new = line.split('.')
+                new.pop(2)
+                c_string = c_string.replace(line, '.'.join(new), 1)
+        return c_string.replace('=', ' = ')
+
+    def _del_key_if_empty(self, w2del):
+        self.my_config = self.my_config.replace(w2del, 'delme')
+        i = len(self.my_config[:self.my_config.index('delme')].split('\n')) - 1
+        my_cfg = self.my_config.split('\n')
+        my_cfg.pop(i)
+        self.my_config = '\n'.join(my_cfg)
+
+    def _read_config(self):
+        with open(self.config_file_name) as conf_fd:
+            buffer = []
+            for fline in conf_fd:
+                if not fline.startswith('#') and fline != '\n':
+                    buffer.append(fline)
+            self.my_config = ''.join(buffer)
+            self.my_config = self.my_config.rstrip('\n')
+            self.my_config = self.my_config.replace(' ', '')
+            self._mark_interfaces()
+
+    def save_config(self):
+        super(BugContainer, self).save_config()
+        self._read_config()
+
+    def set_config_item(self, key, value):
+        if 'network' in key and ('ipv4' in key or 'flags' in key):
+            if value == 'down':
+                self._del_key_if_empty(key)
+            else:
+                cur_ip = ''.join(self.get_config_item(key))
+                if cur_ip:
+                    position = self.my_config.rindex(key)
+                    position = len(self.my_config[:position].split('\n')) - 1
+                    self.my_config = self.my_config.replace(self.my_config.split('\n')[position],
+                                                            '%s=%s' % (key, value))
+                    if not str(value):
+                        self._del_key_if_empty(key)
+                else:
+                    position = self.my_config.rindex('.'.join(key.split('.')[:3]))
+                    position = len(self.my_config[:position].split('\n'))
+                    all_opt_inter = self.my_config.split('\n')
+                    all_opt_inter.insert(position, '%s=%s' % (key, value))
+                    self.my_config = '\n'.join(all_opt_inter)
+            with open(self.config_file_name, 'w') as conf_fd:
+                conf_fd.write(self._clean_up_config())
+            return 'B'
+        else:
+            return super(BugContainer, self).set_config_item(key, value)
+
+    def get_config_item(self, key):
+        if 'network' in key and ('ipv4' in key or 'flags' in key):
+            keys = [key.split('=')[0] for key in self.my_config.split('\n')]
+            values = [value.split('=')[1] for value in self.my_config.split('\n')]
+            conf_dict = dict(zip(keys, values))
+            value = str(conf_dict.get(key, ''))
+            if 'flags' in key:
+                return value
+            else:
+                value = value.replace('.', ' . ')
+                return value.split(' ')
+        else:
+            return super(BugContainer, self).get_config_item(key)
+
+
+def my_list_containers(active=True, defined=True, as_object=False, config_path=None):
+    """
+    List the containers on the system.
+    This function from original lxc library. It is rewrited to be work with new class
+    """
+    if config_path:
+        if not os.path.exists(config_path):
+            return tuple()
+        try:
+            entries = _lxc.list_containers(active=active, defined=defined, config_path=config_path)
+        except ValueError:
+            return tuple()
+    else:
+        try:
+            entries = _lxc.list_containers(active=active, defined=defined)
+        except ValueError:
+            return tuple()
+    if as_object:
+        return tuple([BugContainer(name, config_path) for name in entries])
+    else:
+        return entries
 
 
 def init_curses():
@@ -117,6 +250,7 @@ def relation_list_interfaces():
         current_lxc = selected lxc. index
         if_num = which interface we want to edit
     '''
+
     def clear_edit_box(edit_winid, chk_str):
         edit_winid.move(1, 1)
         y, x = edit_winid.getmaxyx()
@@ -306,7 +440,7 @@ def show_lxc_list(win, y_max, page, my_list):
         win.clrtobot()
         win.addstr(1 + pos if pos < y_max else y_max,
                    1,
-                   '[%s]%s' % (fu.state[0], fu.name) if isinstance(fu, lxc.Container) else '[ ]' + fu)
+                   '[%s] %-8s %s' % (fu.state[0], fu.rootfs_size, fu.name) if isinstance(fu, lxc.Container) else '[ ]' + fu)
     win.box()
     if len(my_list) > y_max:
         win.addstr(0, x - 7, ' %s%s ' % (str(int(page * 100 / (int(len(my_list) / y_max) or 1))), '%'))
@@ -364,9 +498,9 @@ def keyboard_shortcuts(scr_id):
                 break
 
     def write_config(lxc_conf_key, value):
-        if value:
-            list_of_containers[cursor_pos - 1].clear_config_item(lxc_conf_key)
-            list_of_containers[cursor_pos - 1].set_config_item(lxc_conf_key, value)
+        list_of_containers[cursor_pos - 1].clear_config_item(lxc_conf_key)
+        res = list_of_containers[cursor_pos - 1].set_config_item(lxc_conf_key, value)
+        if res != 'B':
             list_of_containers[cursor_pos - 1].save_config()
 
     def clear_lxc_win():
@@ -389,7 +523,7 @@ def keyboard_shortcuts(scr_id):
         if_index = (all_if.index(list_of_containers[cursor_pos - 1].get_config_item('lxc.network.0.link')) + 1
                     if list_of_containers[cursor_pos - 1].get_config_item('lxc.network.0.link') in all_if else 1)
         type_index = list_of_containers[cursor_pos - 1].get_config_item('lxc.network.0.type')
-        flags_index = list_of_containers[cursor_pos - 1].get_config_item('lxc.network.0.flags')
+        flags_index = list_of_containers[cursor_pos - 1].get_config_item('lxc.network.0.flags') or 'down'
         if_types_list = ['veth', 'vlan', 'macvlan', 'phys']
         if_flags_list = ['down', 'up']
         winds = [radio_list({'x': int(size_x / 2) - 50,
@@ -471,9 +605,9 @@ def keyboard_shortcuts(scr_id):
             return [lxc_conf_inter[winds[0]['choice'] - 1],
                     if_types_list[winds[2]['choice'] - 1],
                     all_if[winds[1]['choice'] - 1],
-                    if_flags_list[winds[3]['choice'] - 1],
                     ''.join(winds[4]['cn_line']),
                     ''.join(winds[5]['cn_line']),
+                    {'down': '', 'up': 'up'}[if_flags_list[winds[3]['choice'] - 1]],
                     ''.join(winds[6]['cn_line'])]
         else:
             return None
@@ -627,7 +761,6 @@ def keyboard_shortcuts(scr_id):
     menu_any = ['C:Create', 'D:Destroy', 'E:Properties', 'I:Interfaces', 'Q:Exit']
     menu_run = ['S:Stop', 'F:Freeze', 'U:Unfreeze', 'T:Console']
     menu_stop = ['R:Run', 'L:Clone', 'N:Rename']
-    #key = 0
     cursor_pos = 1
     cur_page = 0
     size_y, size_x = scr_id.getmaxyx()
@@ -639,19 +772,19 @@ def keyboard_shortcuts(scr_id):
     menu(menu_panels['stop'][0], menu_stop)
     lxc_win_size_y, lxc_win_size_x = lxc_win.getmaxyx()
     clear_lxc_win()
+    lxc_storage = my_list_containers(as_object=True)
     max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                      lxc_win_size_y - 2,
                                                      cur_page,
-                                                     lxc.list_containers(as_object=True))
+                                                     lxc_storage)
     curses.panel.update_panels()
     scr_id.refresh()
     key = 0
+
     while True:
         lxc_win.addstr(0, 3, ' LXC list ', curses.A_BOLD)
         scr_id.move(size_y - 1, size_x - 20)
         scr_id.clrtoeol()
-        scr_id.addstr(size_y-1, size_x-70, 'key: %s curs: %s page: %s view count: %s max lines: %s' %
-                      (key, cursor_pos, cur_page, max_curs_pos, lxc_win_size_y))
         if max_curs_pos >= 1:
             lxc_win.chgat(cursor_pos, 1, 68, curses.A_REVERSE)
             if list_of_containers[cursor_pos - 1].state[0] == 'R':
@@ -671,54 +804,56 @@ def keyboard_shortcuts(scr_id):
         elif key == 100 and list_of_containers:
             destroy_conteiner(list_of_containers[cursor_pos - 1])
             clear_lxc_win()
+            lxc_storage = my_list_containers(as_object=True)
             cursor_pos = cursor_pos - 1 if cursor_pos > 1 else 1
             max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                              lxc_win_size_y - 3,
                                                              cur_page,
-                                                             lxc.list_containers(as_object=True))
+                                                             lxc_storage)
         elif key == 338:
-            lxc_win.chgat(cursor_pos, 1, 48, curses.color_pair(1))
+            lxc_win.chgat(cursor_pos, 1, 68, curses.color_pair(1))
             cursor_pos = max_curs_pos
             cursor_pos, cur_page = move_cursor_down(cur_page, max_curs_pos, cursor_pos, lxc_win)
             max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                              lxc_win_size_y - 2,
                                                              cur_page,
-                                                             lxc.list_containers(as_object=True))
+                                                             lxc_storage)
         elif key == 339:
-            lxc_win.chgat(cursor_pos, 1, 48, curses.color_pair(1))
+            lxc_win.chgat(cursor_pos, 1, 68, curses.color_pair(1))
             cursor_pos = 1
             cursor_pos, cur_page = move_cursor_up(cur_page, cursor_pos, lxc_win)
             max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                              lxc_win_size_y - 2,
                                                              cur_page,
-                                                             lxc.list_containers(as_object=True))
+                                                             lxc_storage)
         elif key == 258:
-            lxc_win.chgat(cursor_pos, 1, 48, curses.color_pair(1))
-            temp_cursor_pos = cursor_pos
+            lxc_win.chgat(cursor_pos, 1, 68, curses.color_pair(1))
+            temp_page = cur_page
             cursor_pos, cur_page = move_cursor_down(cur_page, max_curs_pos, cursor_pos, lxc_win)
-            if temp_cursor_pos != cursor_pos:
+            if temp_page != cur_page:
                 max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                                  lxc_win_size_y - 2,
                                                                  cur_page,
-                                                                 lxc.list_containers(as_object=True))
+                                                                 lxc_storage)
         elif key == 259:
-            lxc_win.chgat(cursor_pos, 1, 48, curses.color_pair(1))
-            temp_cursor_pos = cursor_pos
+            lxc_win.chgat(cursor_pos, 1, 68, curses.color_pair(1))
+            temp_page = cur_page
             cursor_pos, cur_page = move_cursor_up(cur_page, cursor_pos, lxc_win)
-            if temp_cursor_pos != cursor_pos:
+            if temp_page != cur_page:
                 max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                                  lxc_win_size_y - 2,
                                                                  cur_page,
-                                                                 lxc.list_containers(as_object=True))
+                                                                 lxc_storage)
         elif key == 99:
             nlxcdata = new_lxc_dialog()
             if nlxcdata:
                 create_container(*nlxcdata)
                 clear_lxc_win()
+                lxc_storage = my_list_containers(as_object=True)
                 max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                                  lxc_win_size_y - 3,
                                                                  cur_page,
-                                                                 lxc.list_containers(as_object=True))
+                                                                 lxc_storage)
             curses.panel.update_panels()
         elif key == 114:
             list_of_containers[cursor_pos - 1].start()
@@ -729,7 +864,7 @@ def keyboard_shortcuts(scr_id):
             max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                              lxc_win_size_y - 3,
                                                              cur_page,
-                                                             lxc.list_containers(as_object=True))
+                                                             lxc_storage)
         elif key == 115:
             if list_of_containers[cursor_pos - 1].running:
                 list_of_containers[cursor_pos - 1].stop()
@@ -740,24 +875,26 @@ def keyboard_shortcuts(scr_id):
                 max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                                  lxc_win_size_y - 3,
                                                                  cur_page,
-                                                                 lxc.list_containers(as_object=True))
+                                                                 lxc_storage)
         elif key == 105:
-            if_prop = interface_dialog()
-            if if_prop:
-                need_reinit_if = (list_of_containers[cursor_pos - 1].get_config_item('lxc.network.%s.type' % if_prop[0]) !=
-                                  if_prop[1])
-                network_prop = ['type', 'link', 'flags', 'name', 'hwaddr', 'ipv4']
-                if need_reinit_if or 'down' in if_prop:
-                    list_of_containers[cursor_pos - 1].clear_config_item('lxc.network.%s' % if_prop[0])
-                    if_prop[0] = len(list_of_containers[cursor_pos - 1].network)
-                for index, np in enumerate(network_prop, start=1):
-                    if not need_reinit_if and 'down' not in if_prop:
-                        if list_of_containers[cursor_pos - 1].get_config_item('lxc.network.%s.%s' %
-                                (if_prop[0], np)) == if_prop[index]:
-                            continue
-                    if if_prop[index] == 'down':
-                        continue
-                    write_config('lxc.network.%s.%s' % (if_prop[0], np), if_prop[index])
+            if len(list_of_containers):
+                if_prop = interface_dialog()
+                if if_prop:
+                    need_reinit_if = (list_of_containers[cursor_pos - 1].get_config_item('lxc.network.%s.type' % if_prop[0]) !=
+                                      if_prop[1])
+                    network_prop = ['type', 'link', 'name', 'hwaddr', 'flags', 'ipv4']
+                    if need_reinit_if:
+                        list_of_containers[cursor_pos - 1].clear_config_item('lxc.network.%s' % if_prop[0])
+                        if_prop[0] = len(list_of_containers[cursor_pos - 1].network)
+                    for index, np in enumerate(network_prop, start=1):
+                        if not need_reinit_if:
+                            get_val_conf = list_of_containers[cursor_pos - 1].get_config_item('lxc.network.%s.%s' %
+                                                                                              (if_prop[0], np))
+                            if isinstance(get_val_conf, list):
+                                get_val_conf = ''.join(get_val_conf)
+                            if get_val_conf == if_prop[index]:
+                                continue
+                        write_config('lxc.network.%s.%s' % (if_prop[0], np), if_prop[index])
         elif key == 108:
             clone_name = ask_string(' Clone name ')
             if clone_name:
@@ -766,7 +903,7 @@ def keyboard_shortcuts(scr_id):
                 max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                                  lxc_win_size_y - 3,
                                                                  cur_page,
-                                                                 lxc.list_containers(as_object=True))
+                                                                 lxc_storage)
             curses.panel.update_panels()
         elif key == 101:
             lxc_prop = edit_dialog()
@@ -781,7 +918,7 @@ def keyboard_shortcuts(scr_id):
                 max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                                  lxc_win_size_y - 3,
                                                                  cur_page,
-                                                                 lxc.list_containers(as_object=True))
+                                                                 lxc_storage)
             curses.panel.update_panels()
         elif key == 110:
             new_name = ask_string(' Rename ')
@@ -791,7 +928,7 @@ def keyboard_shortcuts(scr_id):
                 max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                                  lxc_win_size_y - 3,
                                                                  cur_page,
-                                                                 lxc.list_containers(as_object=True))
+                                                                 lxc_storage)
             curses.panel.update_panels()
         elif key == 116:
             run_console(list_of_containers[cursor_pos - 1])
@@ -806,7 +943,7 @@ def keyboard_shortcuts(scr_id):
                 max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                                  lxc_win_size_y - 3,
                                                                  cur_page,
-                                                                 lxc.list_containers(as_object=True))
+                                                                 lxc_storage)
         elif key == 117:
             if list_of_containers[cursor_pos - 1].running:
                 list_of_containers[cursor_pos - 1].unfreeze()
@@ -818,7 +955,7 @@ def keyboard_shortcuts(scr_id):
                 max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                                  lxc_win_size_y - 3,
                                                                  cur_page,
-                                                                 lxc.list_containers(as_object=True))
+                                                                 lxc_storage)
 
 
 def main():
