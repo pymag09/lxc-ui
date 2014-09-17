@@ -78,7 +78,7 @@ class BugContainer(lxc.Container):
                     buffer.append(fline)
             self.my_config = ''.join(buffer)
             self.my_config = self.my_config.rstrip('\n')
-            self.my_config = self.my_config.replace(' ', '')
+            self.my_config = self.my_config.replace(' = ', '=', 1)
             self._mark_interfaces()
 
     def save_config(self):
