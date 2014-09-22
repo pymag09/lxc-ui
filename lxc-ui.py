@@ -471,7 +471,7 @@ def get_release_info(path):
             continue
     else:
         rel, v = pars.items('DEFAULT')[0]
-    return rel
+    return rel.replace('"', '')
 
 
 def show_lxc_list(win, y_max, page, my_list):
