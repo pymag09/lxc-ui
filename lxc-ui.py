@@ -3,10 +3,10 @@
 __author__ = 'Bieliaievskyi Sergey'
 __credits__ = ["Bieliaievskyi Sergey"]
 __license__ = "Apache License"
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 __maintainer__ = "Bieliaievskyi Sergey"
 __email__ = "magelan09@gmail.com"
-__status__ = "Release Candidate"
+__status__ = "Release"
 
 
 import curses
@@ -14,6 +14,7 @@ import curses.panel
 import os
 import lxc
 import _lxc
+import multiprocessing as mp
 
 
 class BugContainer(lxc.Container):
@@ -23,11 +24,17 @@ class BugContainer(lxc.Container):
         super(BugContainer, self).__init__(name, config_path)
         self.my_config = ''
         self._read_config()
-        self.rootfs_size = self._get_size()
+        self.rootfs_size = '...'
+        self.rootfs_q = mp.Queue()
+        self.fork_size_calc()
 
-    def _get_size(self):
+    def fork_size_calc(self):
+        self.p = mp.Process(target=self._get_size, args=(self.config_file_name, self.rootfs_q))
+        self.p.start()
+
+    def _get_size(self, path, val_q):
         total_size = 0
-        start_path = str(self.config_file_name).replace('config', 'rootfs')
+        start_path = str(path).replace('config', 'rootfs')
         for dirpath, dirnames, filenames in os.walk(start_path):
             for f in filenames:
                 fp = os.path.join(dirpath, f)
@@ -42,7 +49,7 @@ class BugContainer(lxc.Container):
         if not int(total_size):
             total_size = total_size * 1024
             r = r -1
-        return '%.1f%s' % (float(total_size), ['B', 'K', 'M', 'G', 'T'][r])
+        val_q.put('%.1f%s' % (float(total_size), ['B', 'K', 'M', 'G', 'T'][r]))
 
     def _mark_interfaces(self):
         pos = -1
@@ -81,10 +88,19 @@ class BugContainer(lxc.Container):
             self.my_config = self.my_config.replace(' = ', '=', 1)
             self._mark_interfaces()
 
+    def get_rootfs_size(self):
+        if not self.rootfs_q.empty():
+            self.rootfs_size = self.rootfs_q.get()
+        return self.rootfs_size
+
     def save_config(self):
         super(BugContainer, self).save_config()
         self._read_config()
 
+    def stop(self):
+        super(BugContainer, self).stop()
+        self.fork_size_calc()
+        
     def set_config_item(self, key, value):
         if 'network' in key and ('ipv4' in key or 'flags' in key):
             if value == 'down':
@@ -440,7 +456,7 @@ def show_lxc_list(win, y_max, page, my_list):
         win.clrtobot()
         win.addstr(1 + pos if pos < y_max else y_max,
                    1,
-                   '[%s] %-8s %s' % (fu.state[0], fu.rootfs_size, fu.name) if isinstance(fu, lxc.Container) else '[ ]' + fu)
+                   '[%s] %-8s %s' % (fu.state[0], fu.get_rootfs_size(), fu.name) if isinstance(fu, lxc.Container) else '[ ]' + fu)
     win.box()
     if len(my_list) > y_max:
         win.addstr(0, x - 7, ' %s%s ' % (str(int(page * 100 / (int(len(my_list) / y_max) or 1))), '%'))
@@ -830,20 +846,18 @@ def keyboard_shortcuts(scr_id):
             lxc_win.chgat(cursor_pos, 1, 68, curses.color_pair(1))
             temp_page = cur_page
             cursor_pos, cur_page = move_cursor_down(cur_page, max_curs_pos, cursor_pos, lxc_win)
-            if temp_page != cur_page:
-                max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
-                                                                 lxc_win_size_y - 2,
-                                                                 cur_page,
-                                                                 lxc_storage)
+            max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
+                                                             lxc_win_size_y - 2,
+                                                             cur_page,
+                                                             lxc_storage)
         elif key == 259:
             lxc_win.chgat(cursor_pos, 1, 68, curses.color_pair(1))
             temp_page = cur_page
             cursor_pos, cur_page = move_cursor_up(cur_page, cursor_pos, lxc_win)
-            if temp_page != cur_page:
-                max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
-                                                                 lxc_win_size_y - 2,
-                                                                 cur_page,
-                                                                 lxc_storage)
+            max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
+                                                             lxc_win_size_y - 2,
+                                                             cur_page,
+                                                             lxc_storage)
         elif key == 99:
             nlxcdata = new_lxc_dialog()
             if nlxcdata:
@@ -857,10 +871,12 @@ def keyboard_shortcuts(scr_id):
             curses.panel.update_panels()
         elif key == 114:
             list_of_containers[cursor_pos - 1].start()
+            list_of_containers[cursor_pos - 1].fork_size_calc()
             lxc_win.addstr(cursor_pos, int(lxc_win_size_x / 2) - 3, 'WAIT',
                            curses.color_pair(1) | curses.A_BLINK | curses.A_REVERSE)
             lxc_win.refresh()
             list_of_containers[cursor_pos - 1].wait("RUNNING", 3)
+
             max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                              lxc_win_size_y - 3,
                                                              cur_page,
@@ -868,6 +884,7 @@ def keyboard_shortcuts(scr_id):
         elif key == 115:
             if list_of_containers[cursor_pos - 1].running:
                 list_of_containers[cursor_pos - 1].stop()
+                list_of_containers[cursor_pos - 1].fork_size_calc()
                 lxc_win.addstr(cursor_pos, int(lxc_win_size_x / 2) - 3, 'WAIT',
                                curses.color_pair(1) | curses.A_BLINK | curses.A_REVERSE)
                 lxc_win.refresh()
@@ -935,6 +952,7 @@ def keyboard_shortcuts(scr_id):
         elif key == 102:
             if list_of_containers[cursor_pos - 1].running:
                 list_of_containers[cursor_pos - 1].freeze()
+                list_of_containers[cursor_pos - 1].fork_size_calc()
                 lxc_win.addstr(cursor_pos, int(lxc_win_size_x / 2) - 3, 'WAIT',
                                curses.color_pair(1) | curses.A_BLINK | curses.A_REVERSE)
                 lxc_win.refresh()
@@ -947,6 +965,7 @@ def keyboard_shortcuts(scr_id):
         elif key == 117:
             if list_of_containers[cursor_pos - 1].running:
                 list_of_containers[cursor_pos - 1].unfreeze()
+                list_of_containers[cursor_pos - 1].fork_size_calc()
                 lxc_win.addstr(cursor_pos, int(lxc_win_size_x / 2) - 3, 'WAIT',
                                curses.color_pair(1) | curses.A_BLINK | curses.A_REVERSE)
                 lxc_win.refresh()
