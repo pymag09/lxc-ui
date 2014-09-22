@@ -3,7 +3,7 @@
 __author__ = 'Bieliaievskyi Sergey'
 __credits__ = ["Bieliaievskyi Sergey"]
 __license__ = "Apache License"
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 __maintainer__ = "Bieliaievskyi Sergey"
 __email__ = "magelan09@gmail.com"
 __status__ = "Release"
@@ -15,6 +15,8 @@ import os
 import lxc
 import _lxc
 import multiprocessing as mp
+import configparser
+from io import StringIO
 
 
 class BugContainer(lxc.Container):
@@ -449,6 +451,29 @@ def lxc_dialog_panel(win_array, container):
     return cur_win_id['return']
 
 
+def get_release_info(path):
+    def add_section(fp):
+        content = "[DEFAULT]\n%s" % fp.read()
+        return StringIO(content)
+
+    def read_releasefile(filename):
+        config = configparser.RawConfigParser(allow_no_value=True)
+        config.read_file(add_section(open(filename)))
+        return config
+
+    pars = read_releasefile('%s%s' % (path,
+                                      [rfile for rfile in next(os.walk(path))[2] if 'release' in rfile][0]))
+    for n1, n2 in ['DISTRIB_DESCRIPTION', 'DISTRIB_CODENAME'], ['NAME', 'VERSION']:
+        try:
+            rel = '%s %s' % (pars['DEFAULT'][n1], pars['DEFAULT'][n2])
+            break
+        except KeyError:
+            continue
+    else:
+        rel, v = pars.items('DEFAULT')[0]
+    return rel
+
+
 def show_lxc_list(win, y_max, page, my_list):
     y, x = win.getmaxyx()
     for pos, fu in enumerate(my_list[page * y_max:(page * y_max) + y_max]):
@@ -456,7 +481,11 @@ def show_lxc_list(win, y_max, page, my_list):
         win.clrtobot()
         win.addstr(1 + pos if pos < y_max else y_max,
                    1,
-                   '[%s] %-8s %s' % (fu.state[0], fu.get_rootfs_size(), fu.name) if isinstance(fu, lxc.Container) else '[ ]' + fu)
+                   '[%s] %-8s %-50s %s' % (fu.state[0],
+                                        fu.get_rootfs_size(),
+                                        fu.name,
+                                        get_release_info(str(fu.config_file_name).replace('config', 'rootfs/etc/')))
+                   if isinstance(fu, lxc.Container) else '[ ]' + fu)
     win.box()
     if len(my_list) > y_max:
         win.addstr(0, x - 7, ' %s%s ' % (str(int(page * 100 / (int(len(my_list) / y_max) or 1))), '%'))
@@ -780,7 +809,7 @@ def keyboard_shortcuts(scr_id):
     cursor_pos = 1
     cur_page = 0
     size_y, size_x = scr_id.getmaxyx()
-    lxc_win = curses.newwin(size_y - 2, 70, 0, int((size_x / 2) - 40))
+    lxc_win = curses.newwin(size_y - 2, 140, 0, int((size_x / 2.5) - 40))
     panel = curses.panel.new_panel(lxc_win)
     menu_panels = init_menu_panel()
     menu(menu_panels['any'][0], menu_any)
@@ -802,7 +831,7 @@ def keyboard_shortcuts(scr_id):
         scr_id.move(size_y - 1, size_x - 20)
         scr_id.clrtoeol()
         if max_curs_pos >= 1:
-            lxc_win.chgat(cursor_pos, 1, 68, curses.A_REVERSE)
+            lxc_win.chgat(cursor_pos, 1, 138, curses.A_REVERSE)
             if list_of_containers[cursor_pos - 1].state[0] == 'R':
                 menu_panels['run'][1].show()
                 menu_panels['stop'][1].hide()
