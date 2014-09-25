@@ -809,7 +809,7 @@ def keyboard_shortcuts(scr_id):
     cursor_pos = 1
     cur_page = 0
     size_y, size_x = scr_id.getmaxyx()
-    lxc_win = curses.newwin(size_y - 2, 140, 0, int((size_x / 2.5) - 40))
+    lxc_win = curses.newwin(size_y - 2, size_x, 0, 0)
     panel = curses.panel.new_panel(lxc_win)
     menu_panels = init_menu_panel()
     menu(menu_panels['any'][0], menu_any)
@@ -831,7 +831,7 @@ def keyboard_shortcuts(scr_id):
         scr_id.move(size_y - 1, size_x - 20)
         scr_id.clrtoeol()
         if max_curs_pos >= 1:
-            lxc_win.chgat(cursor_pos, 1, 138, curses.A_REVERSE)
+            lxc_win.chgat(cursor_pos, 1, size_x - 2, curses.A_REVERSE)
             if list_of_containers[cursor_pos - 1].state[0] == 'R':
                 menu_panels['run'][1].show()
                 menu_panels['stop'][1].hide()
