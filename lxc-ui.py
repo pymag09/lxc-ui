@@ -793,7 +793,7 @@ def keyboard_shortcuts(scr_id):
             return None
 
     def show_me_screen():
-        nonlocal lxc_win, size_y, size_x, menu_panel, lxc_win_size_y, lxc_win_size_x, menu_panels
+        nonlocal lxc_win, size_y, size_x, menu_panel, lxc_win_size_y, lxc_win_size_x, menu_panels, panel
         size_y, size_x = scr_id.getmaxyx()
         lxc_win = curses.newwin(size_y - 2, size_x, 0, 0)
         panel = curses.panel.new_panel(lxc_win)
@@ -810,7 +810,9 @@ def keyboard_shortcuts(scr_id):
     cursor_pos = 1
     cur_page = 0
 
-    lxc_win, size_y, size_x, menu_panel, lxc_win_size_y, lxc_win_size_x, menu_panels = None, 0, 0, None, 0, 0, None
+    lxc_win, size_y, size_x, menu_panel, lxc_win_size_y, lxc_win_size_x, menu_panels, panel = None, 0, 0, \
+                                                                                              None, 0, 0, \
+                                                                                              None, None
     show_me_screen()
     lxc_storage = my_list_containers(as_object=True)
     max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
