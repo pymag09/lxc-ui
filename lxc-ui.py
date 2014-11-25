@@ -28,14 +28,28 @@ class BugContainer(lxc.Container):
         self._read_config()
         self.rootfs_size = '...'
         self.rootfs_q = mp.Queue()
-        self.fork_size_calc()
+        self.p = None
 
-    def fork_size_calc(self):
-        self.p = mp.Process(target=self._get_size, args=(self.config_file_name, self.rootfs_q))
+    def fork_size_calc(self, win_d=None, position=None):
+        self.p = mp.Process(target=self._get_size, args=(self.config_file_name, self.rootfs_q, win_d, position))
         self.p.start()
+        self.p.join()
 
-    def _get_size(self, path, val_q):
+    def _get_size(self, path, val_q, w_d, size_pos):
+        def calc_suffix():
+            nonlocal r
+            r = 0
+            r = int(int(len(str(total_size))) / 3)
+            tsize = total_size / 1024 ** r
+            if not int(tsize):
+                tsize *= 1024
+                r -= 1
+            return tsize
+
         total_size = 0
+        r = 0
+        if w_d:
+            y, x = w_d.getyx()
         start_path = str(path).replace('config', 'rootfs')
         for dirpath, dirnames, filenames in os.walk(start_path):
             for f in filenames:
@@ -44,13 +58,13 @@ class BugContainer(lxc.Container):
                     if os.path.islink(fp):
                         continue
                     total_size += os.path.getsize(fp)
+                    if w_d and size_pos:
+                        w_d.addstr(size_pos, 5, '%.1f%-4s' % (float(calc_suffix()), ['B', 'K', 'M', 'G', 'T'][r]), curses.A_REVERSE)
+                        w_d.move(y, x)
+                        w_d.refresh()
                 except FileNotFoundError:
                     pass
-        r = int(int(len(str(total_size))) / 3)
-        total_size /= 1024 ** r
-        if not int(total_size):
-            total_size *= 1024
-            r -= 1
+        total_size = calc_suffix()
         val_q.put('%.1f%s' % (float(total_size), ['B', 'K', 'M', 'G', 'T'][r]))
 
     def _mark_interfaces(self):
@@ -481,7 +495,7 @@ def show_lxc_list(win, y_max, page, my_list):
         win.clrtobot()
         win.addstr(1 + pos if pos < y_max else y_max,
                    1,
-                   '[%s] %-8s %-50s %s' % (fu.state[0],
+                   '[%s] %-8s %-50s %s' % ('R' if fu.init_pid > 0 else 'S',
                                         fu.get_rootfs_size(),
                                         fu.name,
                                         get_release_info(str(fu.config_file_name).replace('config', 'rootfs/etc/')))
@@ -742,20 +756,24 @@ def keyboard_shortcuts(scr_id):
             return None
 
     def init_menu_panel():
-        m_any_w = curses.newwin(1, 57, size_y - 1, 0)
+        m_any_w = curses.newwin(1, 75, size_y - 1, 0)
         m_any_p = curses.panel.new_panel(m_any_w)
-        m_run_w = curses.newwin(1, 46, size_y - 1, 57)
+        m_run_w = curses.newwin(1, 46, size_y - 1, 75)
         m_run_p = curses.panel.new_panel(m_run_w)
-        m_stop_w = curses.newwin(1, 29, size_y - 1, 57)
+        m_stop_w = curses.newwin(1, 29, size_y - 1, 75)
         m_stop_p = curses.panel.new_panel(m_stop_w)
         return {'any': (m_any_w, m_any_p), 'run': (m_run_w, m_run_p), 'stop': (m_stop_w, m_stop_p)}
 
     def menu(menu_win, menu_type):
         offset = 0
         for item in menu_type:
-            menu_win.addstr(0, offset, item.split(':')[0], curses.color_pair(2) | curses.A_BOLD)
-            menu_win.addstr(0, offset + 2, '%s' % item.split(':')[1], curses.color_pair(3))
-            offset = offset + len(item) + 2
+            k, descr = item.split(':')
+            try:
+                menu_win.addstr(0, offset, k, curses.color_pair(2) | curses.A_BOLD)
+                menu_win.addstr(0, offset + 2 + len(k), '%s' % descr, curses.color_pair(3))
+                offset = offset + len(item) + 2
+            except:
+                pass
 
     def scan_cache_folders():
         buf = []
@@ -792,6 +810,27 @@ def keyboard_shortcuts(scr_id):
         else:
             return None
 
+
+    def snapshot_dialog():
+        winds = []
+        snap_list = [" ".join([snap[0], snap[2]]) for snap in list_of_containers[cursor_pos - 1].snapshot_list()]
+        print(snap_list)
+        winds.append(radio_list({'x': int(size_x / 2) - 50, 'y': 5,
+                                 'width': 50, 'lines': 18,
+                                 'subj': 'Snapshots', 'radio_list': snap_list}))
+        winds.append(buttons({'x': int(size_x / 2) - 50, 'y': 25, 'width': 25, 'txt': '[ OK ]', 'return': 1}))
+        winds.append(buttons({'x': int(size_x / 2) - 25, 'y': 25, 'width': 25, 'txt': '[ Cancel ]', 'return': 0}))
+
+        curses.panel.update_panels()
+        scr_id.refresh()
+        status = lxc_dialog_panel(winds, None)
+        if status:
+            return (''.join(winds[0]['cn_line']),
+                    winds[1]['items'][int(winds[1]['choice']) - 1])
+        else:
+            return None
+
+
     def show_me_screen():
         nonlocal lxc_win, size_y, size_x, menu_panel, lxc_win_size_y, lxc_win_size_x, menu_panels, panel
         size_y, size_x = scr_id.getmaxyx()
@@ -804,7 +843,7 @@ def keyboard_shortcuts(scr_id):
         lxc_win_size_y, lxc_win_size_x = lxc_win.getmaxyx()
         clear_lxc_win()
 
-    menu_any = ['C:Create', 'D:Destroy', 'E:Properties', 'I:Interfaces', 'Q:Exit']
+    menu_any = ['C:Create', 'D:Destroy', 'E:Properties', 'I:Interfaces', 'Space:Disk usage', 'Q:Exit']
     menu_run = ['S:Stop', 'F:Freeze', 'U:Unfreeze', 'T:Console']
     menu_stop = ['R:Run', 'L:Clone', 'N:Rename']
     cursor_pos = 1
@@ -827,12 +866,17 @@ def keyboard_shortcuts(scr_id):
         lxc_win.addstr(0, 3, ' LXC list ', curses.A_BOLD)
         scr_id.move(size_y - 1, size_x - 20)
         scr_id.clrtoeol()
+        try:
+            scr_id.addstr(size_y-1, size_x-70, 'key: %s curs: %s page: %s view count: %s max lines: %s' %
+                          (key, cursor_pos, cur_page, max_curs_pos, lxc_win_size_y))
+        except:
+            pass
         if max_curs_pos >= 1:
             lxc_win.chgat(cursor_pos, 1, size_x - 2, curses.A_REVERSE)
-            if list_of_containers[cursor_pos - 1].state[0] == 'R':
+            if list_of_containers[cursor_pos - 1].init_pid == 1:
                 menu_panels['run'][1].show()
                 menu_panels['stop'][1].hide()
-            if list_of_containers[cursor_pos - 1].state[0] == 'S':
+            if list_of_containers[cursor_pos - 1].init_pid == -1:
                 menu_panels['run'][1].hide()
                 menu_panels['stop'][1].show()
             curses.panel.update_panels()
@@ -852,7 +896,7 @@ def keyboard_shortcuts(scr_id):
         if key == 113:
             shutdown_curses(scr_id)
             for lc in lxc_storage:
-                if lc.p.is_alive():
+                if lc.p and lc.p.is_alive():
                     lc.p.terminate()
             break
         elif key == 100 and list_of_containers:
@@ -882,7 +926,6 @@ def keyboard_shortcuts(scr_id):
                                                              lxc_storage)
         elif key == 258:
             lxc_win.chgat(cursor_pos, 1, 68, curses.color_pair(1))
-            temp_page = cur_page
             cursor_pos, cur_page = move_cursor_down(cur_page, max_curs_pos, cursor_pos, lxc_win)
             max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                              lxc_win_size_y - 2,
@@ -890,12 +933,14 @@ def keyboard_shortcuts(scr_id):
                                                              lxc_storage)
         elif key == 259:
             lxc_win.chgat(cursor_pos, 1, 68, curses.color_pair(1))
-            temp_page = cur_page
             cursor_pos, cur_page = move_cursor_up(cur_page, cursor_pos, lxc_win)
             max_curs_pos, list_of_containers = show_lxc_list(lxc_win,
                                                              lxc_win_size_y - 2,
                                                              cur_page,
                                                              lxc_storage)
+        elif key == 111:
+            snapshot_dialog()
+
         elif key == 99:
             nlxcdata = new_lxc_dialog()
             if nlxcdata:
@@ -1000,6 +1045,9 @@ def keyboard_shortcuts(scr_id):
                                                                  lxc_win_size_y - 3,
                                                                  cur_page,
                                                                  lxc_storage)
+        elif key == 32:
+            list_of_containers[cursor_pos - 1].fork_size_calc(lxc_win, cursor_pos)
+
         elif key == 117:
             if list_of_containers[cursor_pos - 1].running:
                 list_of_containers[cursor_pos - 1].unfreeze()
