@@ -18,7 +18,6 @@ import multiprocessing as mp
 import configparser
 from io import StringIO
 
-
 class BugContainer(lxc.Container):
     def __init__(self, name, config_path=None):
         super(BugContainer, self).__init__(name, config_path)
@@ -73,7 +72,9 @@ class BugContainer(lxc.Container):
 
     def stop(self):
         super(BugContainer, self).stop()
+        #self.rootfs_size = self._get_size()
         self.fork_size_calc()
+
 
 class Interface:
     def __init__(self, y, x, w, h, title_color, regular_text_color, title=''):
@@ -156,7 +157,7 @@ class EditBar(Interface):
         if (len(self.value) < self.w - 3 and ((48 <= special_key <= 57) or
                                               (65 <= special_key <= 90) or
                                               (97 <= special_key <= 122) or
-                                              special_key in (45, 95, 58, 47, 44, 46, 64))):
+                                              special_key in (45, 95, 58, 47, 44, 46, 64, 32))):
             if self.numeric and not chr(special_key).isdigit():
                 return
             self.value.insert(self.cursor_position_x - 1, chr(special_key))
@@ -279,10 +280,11 @@ class RadioList(List):
         self.print_rlist()
 
     def print_rlist(self, check=''):
-        super(RadioList, self).print_rlist('[ ]')
-        if self.page * self.y_max <= self.choice <= self.page * self.y_max + self.y_max:
-            self.win_id.addstr(self.choice - self.page * self.y_max, 2, '*', self.regular_text_color)
-            self.win_id.move(self.cursor_pos, 2)
+        if len(self.rlist) > 0:
+            super(RadioList, self).print_rlist('[ ]')
+            if self.page * self.y_max <= self.choice <= self.page * self.y_max + self.y_max:
+                self.win_id.addstr(self.choice - self.page * self.y_max, 2, '*', self.regular_text_color)
+                self.win_id.move(self.cursor_pos, 2)
 
     def update(self):
         super(RadioList, self).update()
@@ -316,14 +318,12 @@ class Button(Interface):
         super(Button, self).__init__(x, y, w, h, title_color, regular_text_color)
         self.title = title
         self.checked = 0
-        #self.value = value & self.checked
         self.win_id.addstr(1, int((self.w / 2) - (len(title) / 2)), '[%s]' % self.title, regular_text_color)
 
     def action(self, special_key):
         super(Button, self).action(special_key)
         if special_key == 10 or special_key == 32:
             self.checked = 1
-            #self.value &= self.checked
 
     @staticmethod
     def focus():
@@ -539,7 +539,7 @@ def keyboard_shortcuts(scr_id):
     def init_menu_panel():
         m_any_w = curses.newwin(1, 75, size_y - 1, 0)
         m_any_p = curses.panel.new_panel(m_any_w)
-        m_run_w = curses.newwin(1, 46, size_y - 1, 75)
+        m_run_w = curses.newwin(1, 60, size_y - 1, 75)
         m_run_p = curses.panel.new_panel(m_run_w)
         m_stop_w = curses.newwin(1, 60, size_y - 1, 75)
         m_stop_p = curses.panel.new_panel(m_stop_w)
@@ -758,8 +758,15 @@ def keyboard_shortcuts(scr_id):
         start_dialog.keyboard()
         return 1 if lxc_OK.checked else 0
 
+    def attach_console(cmd):
+        if not curses.isendwin():
+            curses.endwin()
+        lxc_storage[lxc_win.value].attach_wait(lxc.attach_run_command, cmd)
+        input('Press ENTER to continue')
+
+
     menu_any = ['C:Create', 'D:Destroy', 'E:Properties', 'I:Interfaces', 'Space:Disk usage', 'Q:Exit']
-    menu_run = ['S:Stop', 'F:Freeze', 'U:Unfreeze', 'T:Console']
+    menu_run = ['S:Stop', 'F:Freeze', 'U:Unfreeze', 'T:Console', 'Ctrl+T: Cmd exec']
     menu_stop = ['R:Run', 'L:Clone', 'N:Rename', 'M:Snapshot', 'O:Snapshot menu']
     cursor_pos = 1
     cur_page = 0
@@ -802,10 +809,14 @@ def keyboard_shortcuts(scr_id):
         elif key == 100 and lxc_storage:
             if warning('Destroy container???', 'Destroy It!'):
                 destroy_conteiner(lxc_storage[lxc_win.value])
-                lxc_win.action(259)
                 lxc_storage, lxc_list = get_all_lxc_list()
                 lxc_win.rlist.clear()
-                lxc_win.rlist.extend(lxc_list)
+                lxc_win.win_id.clear()
+                lxc_win.update()
+                lxc_win.focus()
+                if len(lxc_list) > 0:
+                    lxc_win.rlist.extend(lxc_list)
+                    lxc_win.action(259)
         elif key == 99:
             nlxcdata = new_lxc_dialog()
             if nlxcdata:
@@ -814,6 +825,11 @@ def keyboard_shortcuts(scr_id):
                 lxc_win.rlist.clear()
                 lxc_win.rlist.extend(lxc_list)
             curses.panel.update_panels()
+
+        elif key == 20:
+            cmd = ask_string(' Run command ')
+            if cmd:
+                attach_console(cmd.split(' '))
 
         elif key == 111:
             '''o key'''
