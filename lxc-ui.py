@@ -78,7 +78,7 @@ class BugContainer(lxc.Container):
 
 class Interface:
     def __init__(self, y, x, w, h, title_color, regular_text_color, title=''):
-        curses.init_pair(100, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(80, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         self.x = x
         self.y = y
         self.w = w
@@ -93,7 +93,7 @@ class Interface:
         self.regular_text_color = regular_text_color
         self.win_id = curses.newwin(self.h, self.w, self.y, self.x)
         self.shadow = curses.newwin(self.h, self.w, self.y + 1, self.x + 1)
-        self.shadow.bkgd(' ', curses.color_pair(100))
+        self.shadow.bkgd(' ', curses.color_pair(80))
         self.shadow.refresh()
         self.panel_id = curses.panel.new_panel(self.win_id)
         self.win_id.bkgd(' ', self.regular_text_color)
