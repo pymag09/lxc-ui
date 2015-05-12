@@ -558,10 +558,14 @@ def keyboard_shortcuts(scr_id):
 
     def scan_cache_folders():
         buf = []
+        if os.path.isdir('%s/.cache/lxc' % os.environ['HOME']):
+            cache_path = '%s/.cache/lxc/download' % os.environ['HOME']
+        else:
+            cache_path = '/var/cache/lxc/dowload'
         try:
-            for top in os.listdir('/var/cache/lxc/download'):
+            for top in os.listdir(cache_path):
                 buf.extend(['/'.join(d[0].split('/')[-3:])
-                            for d in os.walk('%s/%s' % ('/var/cache/lxc/download', top))
+                            for d in os.walk('%s/%s' % (cache_path, top))
                             if 'default' in d[1]])
         except FileNotFoundError:
             pass
