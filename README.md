@@ -17,6 +17,33 @@ git clone https://github.com/pymag09/lxc-ui.git
 sudo ./lxc-ui.py
 ```
 
+UNPRIVILEGED CONTAINERS
+------------------
+```
+sudo apt-get update
+sudo apt-get install -y cgmanager-utils lxc
+mkdir ~/.config && mkdir ~/.config/lxc
+```
+Create default.conf file with the following content:
+```
+lxc.network.type = veth
+lxc.network.link = lxcbr0
+lxc.network.flags = up
+lxc.network.hwaddr = 00:16:3e:xx:xx:xx
+lxc.id_map = u 0 100000 65536
+lxc.id_map = g 0 100000 65536
+```
+And /etc/lxc/lxc-usernet with:
+```
+<your username> veth lxcbr0 10
+```
+Next:
+```
+sudo cgm create all $USER
+sudo cgm chown all $USER $(id -u) $(id -g)
+cgm movepid all $USER $$
+```
+
 ENVIRONMENT
 -----------------
 Ubuntu is recommended for running lxc-ui.py.  
