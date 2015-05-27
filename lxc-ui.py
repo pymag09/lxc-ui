@@ -620,7 +620,11 @@ def keyboard_shortcuts(scr_id):
             this.update()
 
         def find_if_ip(this, arg):
-            this.value = lxc_storage[lxc_win.value].get_config_item('lxc.network.%s.ipv4' % arg)
+            this.value = list(lxc_storage[lxc_win.value].get_config_item('lxc.network.%s.ipv4' % arg))
+            this.update()
+
+        def find_if_ipv6(this, arg):
+            this.value = list(lxc_storage[lxc_win.value].get_config_item('lxc.network.%s.ipv6' % arg))
             this.update()
 
         lxc_if_index = [str(net.index) for net in lxc_storage[lxc_win.value].network]
@@ -650,13 +654,16 @@ def keyboard_shortcuts(scr_id):
                            curses.color_pair(3), ' MAC ',
                            lxc_storage[lxc_win.value].get_config_item('lxc.network.0.hwaddr'), False)
         lxc_ip = EditBar(31, int(size_x / 2) - 50, 50, 3, curses.color_pair(3),
-                           curses.color_pair(3), ' IP ',
+                           curses.color_pair(3), ' IPv4 ',
                            ''.join(lxc_storage[lxc_win.value].get_config_item('lxc.network.0.ipv4')), False)
+        lxc_ipv6 = EditBar(34, int(size_x / 2) - 50, 50, 3, curses.color_pair(3),
+                           curses.color_pair(3), ' IPv6 ',
+                           ''.join(lxc_storage[lxc_win.value].get_config_item('lxc.network.0.ipv6')), False)
 
-        lxc_OK = Button(34, int(size_x / 2) - 50, 25, 3, curses.color_pair(3), curses.color_pair(3), 'OK', 1)
-        lxc_Cancel= Button(34, int((size_x / 2) - 50  + 25), 25, 3, curses.color_pair(3),
+        lxc_OK = Button(37, int(size_x / 2) - 50, 25, 3, curses.color_pair(3), curses.color_pair(3), 'OK', 1)
+        lxc_Cancel= Button(37, int((size_x / 2) - 50  + 25), 25, 3, curses.color_pair(3),
                            curses.color_pair(3), 'Cancel', 0)
-        sb = StatusBar(37, int(size_x / 2) - 50, 50, 3,
+        sb = StatusBar(40, int(size_x / 2) - 50, 50, 3,
                        curses.color_pair(3),
                        curses.color_pair(3),
                        '[ DEL/X ]: delete if [ INS/Z ]: add if')
@@ -668,8 +675,9 @@ def keyboard_shortcuts(scr_id):
         lxc_name.local_func = find_if_name
         lxc_mac.local_func = find_if_mac
         lxc_ip.local_func = find_if_ip
-        start_dialog = Dialog(if_index, host_if, if_type, if_stat, lxc_name, lxc_mac, lxc_ip, lxc_OK, lxc_Cancel)
-        start_dialog.key_map = {330: lxc_del_if, 97: lxc_add_if, 331: lxc_add_if, 120: lxc_del_if}
+        lxc_ipv6.local_func = find_if_ipv6
+        start_dialog = Dialog(if_index, host_if, if_type, if_stat, lxc_name, lxc_mac, lxc_ip, lxc_ipv6, lxc_OK, lxc_Cancel)
+        start_dialog.key_map = {330: lxc_del_if, 122: lxc_add_if, 331: lxc_add_if, 120: lxc_del_if}
         start_dialog.keyboard()
         if lxc_OK.checked:
             return [if_index.rlist[if_index.value],
@@ -678,7 +686,8 @@ def keyboard_shortcuts(scr_id):
                     if_stat.rlist[if_stat.value],
                     ''.join(lxc_name.value),
                     ''.join(lxc_mac.value),
-                    ''.join(lxc_ip.value)]
+                    ''.join(lxc_ip.value),
+                    ''.join(lxc_ipv6.value)]
         else:
             return None
 
@@ -873,7 +882,7 @@ def keyboard_shortcuts(scr_id):
             if if_prop:
                 need_reinit_if = (lxc_storage[lxc_win.value].get_config_item('lxc.network.%s.type' % if_prop[0]) !=
                                   if_prop[2])
-                network_prop = ['type', 'link', 'flags', 'name', 'hwaddr', 'ipv4']
+                network_prop = ['type', 'link', 'flags', 'name', 'hwaddr', 'ipv4', 'ipv6']
                 print(lxc_storage[lxc_win.value].get_config_item('lxc.network.%s.type' % if_prop[0]), if_prop[1])
                 if need_reinit_if:
                     lxc_storage[lxc_win.value].clear_config_item('lxc.network.%s' % if_prop[0])
