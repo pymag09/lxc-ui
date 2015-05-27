@@ -1,38 +1,46 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-
   <head>
-    <meta charset='utf-8'>
+    <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <meta name="description" content="LXC farm manager : User interface terminal UI LXC python3 linux container manager">
+    <title>LXC farm manager by pymag09</title>
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/github-dark.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+    <script src="javascripts/main.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 
-    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
-
-    <title>LXC farm manager</title>
   </head>
-
   <body>
 
-    <!-- HEADER -->
-    <div id="header_wrap" class="outer">
-        <header class="inner">
-          <a id="forkme_banner" href="https://github.com/pymag09/lxc-ui">View on GitHub</a>
+      <header>
+        <h1>LXC farm manager</h1>
+        <p>User interface terminal UI LXC python3 linux container manager</p>
+      </header>
 
-          <h1 id="project_title">LXC farm manager</h1>
-          <h2 id="project_tagline">User interface terminal UI LXC python3 linux container manager</h2>
+      <div id="banner">
+        <span id="logo"></span>
 
-            <section id="downloads">
-              <a class="zip_download_link" href="https://github.com/pymag09/lxc-ui/zipball/master">Download this project as a .zip file</a>
-              <a class="tar_download_link" href="https://github.com/pymag09/lxc-ui/tarball/master">Download this project as a tar.gz file</a>
-            </section>
-        </header>
-    </div>
+        <a href="https://github.com/pymag09/lxc-ui" class="button fork"><strong>View On GitHub</strong></a>
+        <div class="downloads">
+          <span>Downloads:</span>
+          <ul>
+            <li><a href="https://github.com/pymag09/lxc-ui/zipball/master" class="button">ZIP</a></li>
+            <li><a href="https://github.com/pymag09/lxc-ui/tarball/master" class="button">TAR</a></li>
+          </ul>
+        </div>
+      </div><!-- end banner -->
 
-    <!-- MAIN CONTENT -->
-    <div id="main_content_wrap" class="outer">
-      <section id="main_content" class="inner">
+    <div class="wrapper">
+      <nav>
+        <ul></ul>
+      </nav>
+      <section>
         <h1>
-<a name="compact-and-secure-tool-for-managing-lxc-containers" class="anchor" href="#compact-and-secure-tool-for-managing-lxc-containers"><span class="octicon octicon-link"></span></a>Compact and secure tool for managing LXC containers.</h1>
+<a id="compact-and-secure-tool-for-managing-lxc-containers" class="anchor" href="#compact-and-secure-tool-for-managing-lxc-containers" aria-hidden="true"><span class="octicon octicon-link"></span></a>Compact and secure tool for managing LXC containers.</h1>
 
 <p>Using <strong>lxc-ui.py</strong> you can:</p>
 
@@ -46,14 +54,16 @@
 <li>connect to terminal</li>
 <li>rename</li>
 <li>clone </li>
-</ul><p>containers.
+</ul>
+
+<p>containers.
 UI is created using curses library and looks almost like midnight commander.</p>
 
 <h3>
-<a name="it-can-be-used-on-server-with-very-strict-security-policy-when-external-access-is-not-allowed" class="anchor" href="#it-can-be-used-on-server-with-very-strict-security-policy-when-external-access-is-not-allowed"><span class="octicon octicon-link"></span></a>It can be used on server with very strict security policy. When external access is not allowed.</h3>
+<a id="it-can-be-used-on-server-with-very-strict-security-policy-when-external-access-is-not-allowed" class="anchor" href="#it-can-be-used-on-server-with-very-strict-security-policy-when-external-access-is-not-allowed" aria-hidden="true"><span class="octicon octicon-link"></span></a>It can be used on server with very strict security policy. When external access is not allowed.</h3>
 
 <h2>
-<a name="instalation" class="anchor" href="#instalation"><span class="octicon octicon-link"></span></a>INSTALATION</h2>
+<a id="instalation" class="anchor" href="#instalation" aria-hidden="true"><span class="octicon octicon-link"></span></a>INSTALATION</h2>
 
 <blockquote>
 <p>apt-get update<br>
@@ -64,34 +74,55 @@ sudo ./lxc-ui.py  </p>
 </blockquote>
 
 <h2>
-<a name="environment" class="anchor" href="#environment"><span class="octicon octicon-link"></span></a>ENVIRONMENT</h2>
+<a id="unprivileged-containers" class="anchor" href="#unprivileged-containers" aria-hidden="true"><span class="octicon octicon-link"></span></a>UNPRIVILEGED CONTAINERS</h2>
+
+<blockquote>
+<p>sudo apt-get update<br>
+sudo apt-get install -y cgmanager-utils lxc<br>
+mkdir ~/.config &amp;&amp; mkdir ~/.config/lxc<br>
+Create default.conf file with the following content:<br>
+lxc.network.type = veth<br>
+lxc.network.link = lxcbr0<br>
+lxc.network.flags = up<br>
+lxc.network.hwaddr = 00:16:3e:xx:xx:xx<br>
+lxc.id_map = u 0 100000 65536<br>
+lxc.id_map = g 0 100000 65536<br>
+And /etc/lxc/lxc-usernet with:<br>
+ veth lxcbr0 10<br>
+Next:<br>
+sudo cgm create all $USER<br>
+sudo cgm chown all $USER $(id -u) $(id -g)<br>
+cgm movepid all $USER $$  </p>
+</blockquote>
+
+<h2>
+<a id="environment" class="anchor" href="#environment" aria-hidden="true"><span class="octicon octicon-link"></span></a>ENVIRONMENT</h2>
 
 <p>Ubuntu is recommended for running lxc-ui.py.<br>
 Tested on ubuntu 14.04. It has all that you need to run lxc manager in the repository.   </p>
 
 <h2>
-<a name="important" class="anchor" href="#important"><span class="octicon octicon-link"></span></a>IMPORTANT</h2>
+<a id="important" class="anchor" href="#important" aria-hidden="true"><span class="octicon octicon-link"></span></a>IMPORTANT</h2>
 
 <p>If you have found any bugs please report them here: <a href="https://github.com/pymag09/lxc-ui/issues">Issues</a><br>
 All previous commits are here: <a href="https://github.com/pymag09/lxc-ui/commits/master">Commits</a><br>
 In case of serious problem with bugs don't hesitate to switch to previous commit</p>
 
 <h2>
-<a name="screenshots" class="anchor" href="#screenshots"><span class="octicon octicon-link"></span></a>SCREENSHOTS</h2>
+<a id="screenshots" class="anchor" href="#screenshots" aria-hidden="true"><span class="octicon octicon-link"></span></a>SCREENSHOTS</h2>
 
-<p><img src="https://raw.githubusercontent.com/pymag09/lxc-ui/master/main_screen.jpg" alt="Main Screen"><br><img src="https://raw.githubusercontent.com/pymag09/lxc-ui/master/interface.jpg" alt="Interface properties"><br><img src="https://raw.githubusercontent.com/pymag09/lxc-ui/master/new.jpg" alt="Create new container"><br><img src="https://raw.githubusercontent.com/pymag09/lxc-ui/master/properties.jpg" alt="General properties"><br><img src="https://raw.githubusercontent.com/pymag09/lxc-ui/master/rename.jpg" alt="Rename"></p>
+<p><img src="https://raw.githubusercontent.com/pymag09/lxc-ui/master/main_screen.jpg" alt="Main Screen"><br>
+<img src="https://raw.githubusercontent.com/pymag09/lxc-ui/master/interface.jpg" alt="Interface properties"><br>
+<img src="https://raw.githubusercontent.com/pymag09/lxc-ui/master/new.jpg" alt="Create new container"><br>
+<img src="https://raw.githubusercontent.com/pymag09/lxc-ui/master/properties.jpg" alt="General properties"><br>
+<img src="https://raw.githubusercontent.com/pymag09/lxc-ui/master/rename.jpg" alt="Rename">  </p>
       </section>
-    </div>
-
-    <!-- FOOTER  -->
-    <div id="footer_wrap" class="outer">
-      <footer class="inner">
-        <p class="copyright">LXC farm manager maintained by <a href="https://github.com/pymag09">pymag09</a></p>
-        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      <footer>
+        <p>Project maintained by <a href="https://github.com/pymag09">pymag09</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://twitter.com/michigangraham">mattgraham</a></small></p>
       </footer>
     </div>
-
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
     
-
   </body>
 </html>
