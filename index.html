@@ -79,18 +79,30 @@ sudo ./lxc-ui.py  </p>
 <blockquote>
 <p>sudo apt-get update<br>
 sudo apt-get install -y cgmanager-utils lxc<br>
-mkdir ~/.config &amp;&amp; mkdir ~/.config/lxc<br>
-Create default.conf file with the following content:<br>
-lxc.network.type = veth<br>
+mkdir ~/.config &amp;&amp; mkdir ~/.config/lxc  </p>
+</blockquote>
+
+<p>Create default.conf file with the following content:  </p>
+
+<blockquote>
+<p>lxc.network.type = veth<br>
 lxc.network.link = lxcbr0<br>
 lxc.network.flags = up<br>
 lxc.network.hwaddr = 00:16:3e:xx:xx:xx<br>
 lxc.id_map = u 0 100000 65536<br>
-lxc.id_map = g 0 100000 65536<br>
-And /etc/lxc/lxc-usernet with:<br>
- veth lxcbr0 10<br>
-Next:<br>
-sudo cgm create all $USER<br>
+lxc.id_map = g 0 100000 65536  </p>
+</blockquote>
+
+<p>And /etc/lxc/lxc-usernet with:  </p>
+
+<blockquote>
+<p> veth lxcbr0 10  </p>
+</blockquote>
+
+<p>Next:  </p>
+
+<blockquote>
+<p>sudo cgm create all $USER<br>
 sudo cgm chown all $USER $(id -u) $(id -g)<br>
 cgm movepid all $USER $$  </p>
 </blockquote>
