@@ -17,6 +17,8 @@ import _lxc
 import multiprocessing as mp
 import configparser
 from io import StringIO
+import subprocess
+import time
 
 class BugContainer(lxc.Container):
     def __init__(self, name, config_path=None):
@@ -59,7 +61,9 @@ class BugContainer(lxc.Container):
                 if isfile(fp) and not islink(fp):
                     total_size += getsize(fp)
                     if w_d and size_pos:
-                        w_d.addstr(size_pos, 5, '%.1f%-4s' % (float(calc_suffix()), ['B', 'K', 'M', 'G', 'T'][r]), curses.A_REVERSE)
+                        w_d.addstr(size_pos, 5,
+                                   '%.1f%-4s' % (float(calc_suffix()), ['B', 'K', 'M', 'G', 'T'][r]),
+                                   curses.A_REVERSE)
                         w_d.move(y, x)
                         w_d.refresh()
         total_size = calc_suffix()
@@ -181,7 +185,7 @@ class List(Interface):
 
     @staticmethod
     def focus():
-        curses.curs_set(0)
+        curses.curs_set(1)
 
     def _find_position(self):
         self.page = int(self.value / self.y_max)
@@ -270,7 +274,7 @@ class MenuList(List):
 
     @staticmethod
     def focus():
-        curses.curs_set(0)
+        curses.curs_set(1)
 
 
 class RadioList(List):
@@ -416,7 +420,7 @@ def init_curses():
     curses.cbreak()
     curses.noecho()
     screen_id.keypad(1)
-    curses.curs_set(0)
+    #curses.curs_set(0)
     curses.start_color()
     curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE)
     curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLACK)
@@ -561,7 +565,7 @@ def keyboard_shortcuts(scr_id):
         if os.path.isdir('%s/.cache/lxc' % os.environ['HOME']):
             cache_path = '%s/.cache/lxc/download' % os.environ['HOME']
         else:
-            cache_path = '/var/cache/lxc/dowload'
+            cache_path = '/var/cache/lxc/download'
         try:
             for top in os.listdir(cache_path):
                 buf.extend(['/'.join(d[0].split('/')[-3:])
@@ -708,11 +712,12 @@ def keyboard_shortcuts(scr_id):
 
     def snapshot_dialog():
         def snap_rm():
-            snap_name = lxc_snap.rlist[lxc_snap.cursor_pos - 1].split(' ')[0]
-            lxc_storage[lxc_win.value].snapshot_destroy(snap_name)
-            lxc_snap.cursor_pos = lxc_snap.value = 0
-            lxc_snap.rlist = [" ".join([snap[0], snap[2]]) for snap in lxc_storage[lxc_win.value].snapshot_list()]
-            lxc_snap.update()
+            if len(lxc_snap.rlist):
+                snap_name = lxc_snap.rlist[lxc_snap.cursor_pos - 1].split(' ')[0]
+                lxc_storage[lxc_win.value].snapshot_destroy(snap_name)
+                lxc_snap.cursor_pos = lxc_snap.value = 0
+                lxc_snap.rlist = [" ".join([snap[0], snap[2]]) for snap in lxc_storage[lxc_win.value].snapshot_list()]
+                lxc_snap.update()
 
         snap_list = [" ".join([snap[0], snap[2]]) for snap in lxc_storage[lxc_win.value].snapshot_list()]
         lxc_snap = RadioList(5, int(size_x / 2) - 50, 50, 18, curses.color_pair(3),
@@ -730,13 +735,50 @@ def keyboard_shortcuts(scr_id):
         return lxc_snap.rlist[lxc_snap.cursor_pos - 1].split(' ')[0] if lxc_OK.checked else None
 
     def show_me_screen():
-        nonlocal lxc_win, size_y, size_x, menu_panel, lxc_win_size_y, lxc_win_size_x, menu_panels, panel
+        nonlocal lxc_win, size_y, size_x, menu_panel, \
+                 lxc_win_size_y, lxc_win_size_x, menu_panels, \
+                 info_panel, panel
         size_y, size_x = scr_id.getmaxyx()
-        lxc_win = MenuList(0, 0, size_x, size_y - 2, curses.color_pair(1), curses.color_pair(1), lxc_list, "LXC list")
+        lxc_win = MenuList(0, 0, size_x, size_y - 5, curses.color_pair(1), curses.color_pair(1), lxc_list, "LXC list")
         menu_panels = init_menu_panel()
         menu(menu_panels['any'][0], menu_any)
         menu(menu_panels['run'][0], menu_run)
         menu(menu_panels['stop'][0], menu_stop)
+
+    def show_lxc_health(src, y, name_queue, locker):
+        nameLXC = "-1"
+        stop_flag = 70
+        while True:
+            sec = int(time.strftime("%S", time.gmtime()))
+            if sec % 5 == 0 and sec != stop_flag:
+                #locker.acquire()
+                stop_flag = sec
+                if not name_queue.empty():
+                    nameLXC = name_queue.get()
+                if nameLXC == "-100":
+                    break
+                src.move(y, 0)
+                src.clrtoeol()
+                if nameLXC != "-1":
+                    proc = subprocess.Popen(["lxc-attach", "-n", nameLXC, "uptime"],
+                                            stdout=subprocess.PIPE)
+                    src.addstr(y, 0, proc.stdout.readline(), curses.color_pair(2))
+                else:
+                    pass
+                    src.addstr(y, 1, "Not avaliable...", curses.color_pair(2))
+                src.refresh()
+                #locker.release()
+
+
+    def show_all_ips():
+        #scr_id.move(size_y - 4, 0)
+        info_panel.win_id.move(2, 0)
+        scr_id.clrtoeol()
+        if lxc_storage[lxc_win.value].state == "RUNNING":
+            info_panel.win_id.addstr(2, 1, 'IP: %s' % ' '.join(lxc_storage[lxc_win.value].get_ips()), curses.color_pair(2))
+
+
+
 
     def get_all_lxc_list():
         nonlocal lxc_storage, lxc_list
@@ -775,8 +817,6 @@ def keyboard_shortcuts(scr_id):
         if not curses.isendwin():
             curses.endwin()
         lxc_storage[lxc_win.value].attach_wait(lxc.attach_run_command, cmd)
-        input('Press ENTER to continue')
-
 
     menu_any = ['C:Create', 'D:Destroy', 'E:Properties', 'I:Interfaces', 'Space:Disk usage', 'Q:Exit']
     menu_run = ['S:Stop', 'F:Freeze', 'U:Unfreeze', 'T:Console', 'Ctrl+T: Cmd exec']
@@ -784,28 +824,36 @@ def keyboard_shortcuts(scr_id):
     cursor_pos = 1
     cur_page = 0
 
-    lxc_win, size_y, size_x, menu_panel, lxc_win_size_y, lxc_win_size_x, menu_panels, panel = None, 0, 0, \
-                                                                                              None, 0, 0, \
+    lxc_win, size_y, size_x, menu_panel, info_panel, lxc_win_size_y, lxc_win_size_x, menu_panels, panel = None, 0, 0, \
+                                                                                              None, None, 0, 0, \
                                                                                               None, None
+    scr_id.immedok(True)
+    #health_thread = None
+    #health_queue = mp.Queue()
+    #lock = mp.Lock()
     lxc_storage, lxc_list = get_all_lxc_list()
     show_me_screen()
 
-    curses.panel.update_panels()
-    scr_id.refresh()
 
     key = 0
 
+
+
     while True:
+        #lock.acquire()
         if len(lxc_storage) and lxc_storage[lxc_win.value].state == "RUNNING":
             menu_panels['run'][1].show()
             menu_panels['stop'][1].hide()
+            #health_queue.put(lxc_storage[lxc_win.value].name)
         if len(lxc_storage) and lxc_storage[lxc_win.value].state == "STOPPED":
             menu_panels['run'][1].hide()
             menu_panels['stop'][1].show()
+            #health_queue.put("-1")
         curses.panel.update_panels()
         lxc_win.update()
-        key = scr_id.getch()
 
+        key = scr_id.getch(size_y - 3, 1)
+        scr_id.addstr(size_y - 3 ,1 ,"%s" % key, curses.color_pair(2))
         lxc_win.action(key)
 
         if key == curses.KEY_RESIZE:
@@ -818,6 +866,7 @@ def keyboard_shortcuts(scr_id):
             for lc in lxc_storage:
                 if lc.p and lc.p.is_alive():
                     lc.p.terminate()
+            #health_thread.terminate()
             break
         elif key == 100 and lxc_storage:
             if warning('Destroy container???', 'Destroy It!'):
@@ -837,12 +886,17 @@ def keyboard_shortcuts(scr_id):
                 lxc_storage, lxc_list = get_all_lxc_list()
                 lxc_win.rlist.clear()
                 lxc_win.rlist.extend(lxc_list)
-            curses.panel.update_panels()
+            #curses.panel.update_panels()
+        elif key == 15:
+            '''Ctrl+O'''
+            if lxc_storage[lxc_win.value].state == "RUNNING":
+                attach_console(["top"])
 
         elif key == 20:
             cmd = ask_string(' Run command ')
             if cmd:
                 attach_console(cmd.split(' '))
+                input('Press ENTER to continue')
 
         elif key == 111:
             '''o key'''
@@ -855,7 +909,7 @@ def keyboard_shortcuts(scr_id):
                     lxc_win.update()
                     stop_it()
                 lxc_storage[lxc_win.value].snapshot_restore(sndil)
-            curses.panel.update_panels()
+            #curses.panel.update_panels()
 
         elif key == 109:
             '''m key'''
@@ -873,7 +927,8 @@ def keyboard_shortcuts(scr_id):
             lxc_storage[lxc_win.value].wait("RUNNING", 3)
             lxc_list[lxc_win.value] = lxc_list[lxc_win.value].replace('[S]', '[R]')
             del sb
-            curses.panel.update_panels()
+            lxc_win.update()
+            #curses.panel.update_panels()
 
         elif key == 115:
             stop_it()
@@ -896,7 +951,7 @@ def keyboard_shortcuts(scr_id):
                         if get_val_conf == if_prop[index]:
                             continue
                     write_config('lxc.network.%s.%s' % (if_prop[0], np), if_prop[index])
-            curses.panel.update_panels()
+            #curses.panel.update_panels()
         elif key == 108:
             clone_name = ask_string(" Clone name ")
             if clone_name:
@@ -904,7 +959,7 @@ def keyboard_shortcuts(scr_id):
                 lxc_storage, lxc_list = get_all_lxc_list()
                 lxc_win.rlist.clear()
                 lxc_win.rlist.extend(lxc_list)
-                curses.panel.update_panels()
+                #curses.panel.update_panels()
         elif key == 101:
             lxc_prop = edit_dialog()
             if lxc_prop:
@@ -915,7 +970,7 @@ def keyboard_shortcuts(scr_id):
                 write_config('lxc.start.auto', lxc_prop[4])
                 write_config('lxc.start.delay', lxc_prop[5])
                 write_config('lxc.start.order', lxc_prop[6])
-            curses.panel.update_panels()
+            #curses.panel.update_panels()
         elif key == 110:
             new_name = ask_string(' Rename ')
             if new_name:
@@ -923,7 +978,7 @@ def keyboard_shortcuts(scr_id):
                 lxc_storage, lxc_list = get_all_lxc_list()
                 lxc_win.rlist.clear()
                 lxc_win.rlist.extend(lxc_list)
-                curses.panel.update_panels()
+                #curses.panel.update_panels()
 
         elif key == 116:
             run_console(lxc_storage[lxc_win.value])
@@ -936,7 +991,7 @@ def keyboard_shortcuts(scr_id):
                 lxc_storage[lxc_win.value].wait("FROZEN", 3)
                 lxc_list[lxc_win.value] = lxc_list[lxc_win.value].replace('[R]', '[F]')
                 del sb
-            curses.panel.update_panels()
+            #curses.panel.update_panels()
 
         elif key == 32:
             lxc_storage[lxc_win.value].fork_size_calc(lxc_win.win_id, lxc_win.cursor_pos)
@@ -957,7 +1012,10 @@ def keyboard_shortcuts(scr_id):
                 lxc_storage[lxc_win.value].wait("FROZEN", 3)
                 lxc_list[lxc_win.value] = lxc_list[lxc_win.value].replace('[F]', '[R]')
                 del sb
-            curses.panel.update_panels()
+            #curses.panel.update_panels()
+        curses.panel.update_panels()
+        scr_id.move(size_y - 3, 0)
+        #lock.release()
 
 
 def main():
