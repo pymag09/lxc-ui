@@ -1,0 +1,9 @@
+version: 0.0
+os: linux
+files:
+- source: /
+destination: /opt/lxc-ui
+hooks:
+BeforeInstall:
+- location: yum -y install lxc.x86_64
+timeout: 300
