@@ -4,6 +4,6 @@ files:
 - source: /
   destination: /opt/lxc-ui
 hooks:
-BeforeInstall:
-- location: yum -y install lxc.x86_64
-timeout: 300
+  BeforeInstall:
+    - location: yum -y install lxc.x86_64
+      timeout: 300
