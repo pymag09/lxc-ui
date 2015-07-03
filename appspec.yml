@@ -1,9 +1,0 @@
-version: 0.0
-os: linux
-files:
-- source: /
-  destination: /opt/lxc-ui
-hooks:
-  BeforeInstall:
-    - location: lxc-init.sh
-      timeout: 300
