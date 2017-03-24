@@ -801,7 +801,8 @@ def keyboard_shortcuts(scr_id):
     scr_id.refresh()
     key = 0
     while True:
-        container_full_info()
+        if lxc_storage:
+            container_full_info()
         if len(lxc_storage) and lxc_storage[lxc_win.value].state == "RUNNING":
             menu_panels['run'][1].show()
             menu_panels['stop'][1].hide()
